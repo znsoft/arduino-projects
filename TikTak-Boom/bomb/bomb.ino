@@ -13,6 +13,36 @@ int vibro = 8;
 byte len;
 BombMode currentMode;
 
+
+//Buzzer for arduino nano , there is no tone method on it
+void buzz( long frequency, long length) {
+  long delayValue = 1000000 / frequency / 2; // calculate the delay value between transitions
+  //// 1 second's worth of microseconds, divided by the frequency, then split in half since
+  //// there are two phases to each cycle
+  long numCycles = frequency * length / 1000; // calculate the number of cycles for proper timing
+  //// multiply frequency, which is really cycles per second, by the number of seconds to
+  //// get the total number of cycles to produce
+  for (long i = 0; i < numCycles; i++) { // for the calculated length of time...
+    digitalWrite(speakerpin, HIGH); // write the buzzer pin high to push out the diaphram
+    delayMicroseconds(delayValue); // wait for the calculated delay value
+    digitalWrite(speakerpin, LOW); // write the buzzer pin low to pull back the diaphram
+    delayMicroseconds(delayValue); // wait again or the calculated delay value
+  }
+}
+
+
+void melody1() {
+  buzz( 2000, 200);
+  buzz( 1200, 200);
+  buzz( 3500, 100);
+}
+
+void melody2() {
+  buzz( 1200, 200);
+  buzz( 2500, 100);
+}
+
+
 void wakeUpNow()        // here the interrupt is handled after wakeup
 {
   // execute code here after wake-up before returning to the loop() function
@@ -145,11 +175,12 @@ void loop() {
     buttonPressTimer++;
     if (buttonPressTimer > 400) {  //4 секунды удержание кнопки
 
+      melody1();
       for (int i = 100; i > 0 ; i--) noise( 2500 - i * 20, 15);
       delay(1000);
       buttonPressTimer = 0;
       sleepNow();
-      
+      melody2();
     }
     delay(10);
   } else buttonPressTimer = 0;
