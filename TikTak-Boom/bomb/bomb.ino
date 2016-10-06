@@ -130,9 +130,12 @@ void setup() {
   randomSeed(analogRead(0));
   pinMode(speakerpin, OUTPUT);
   pinMode(vibro, OUTPUT);
+  pinMode(9, OUTPUT); // Земля для вибро
+  digitalWrite(9, LOW);
   pinMode(button, INPUT);
   digitalWrite(button, HIGH);
   currentMode = None;
+  for (int i = 100; i > 0 ; i--) noise( 2500 - i * 20, 15);
 }
 
 void TikTak() {
@@ -176,7 +179,7 @@ void loop() {
     if (buttonPressTimer > 400) {  //4 секунды удержание кнопки
 
       melody1();
-      for (int i = 100; i > 0 ; i--) noise( 2500 - i * 20, 15);
+      
       delay(1000);
       buttonPressTimer = 0;
       sleepNow();
