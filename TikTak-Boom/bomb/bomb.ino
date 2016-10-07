@@ -126,6 +126,13 @@ void noise(long frequency, long length) {
   }
 }
 
+
+void Pshoouk(int z) {
+
+  for (int i = z; i > 0 ; i--) noise( 2500 - i * z / 4, 15);
+
+}
+
 void setup() {
   randomSeed(analogRead(0));
   pinMode(speakerpin, OUTPUT);
@@ -135,7 +142,8 @@ void setup() {
   pinMode(button, INPUT);
   digitalWrite(button, HIGH);
   currentMode = None;
-  for (int i = 100; i > 0 ; i--) noise( 2500 - i * 20, 15);
+  melody2();
+  Pshoouk(100);
 }
 
 void TikTak() {
@@ -160,6 +168,7 @@ void loop() {
     currentMode = None;
     digitalWrite(vibro, HIGH);
     noise( 2000, 1500);
+    Pshoouk(50);
     digitalWrite(vibro, LOW);
   }
 
@@ -177,13 +186,15 @@ void loop() {
 
     buttonPressTimer++;
     if (buttonPressTimer > 400) {  //4 секунды удержание кнопки
-
-      melody1();
-      
-      delay(1000);
       buttonPressTimer = 0;
-      sleepNow();
-      melody2();
+      currentMode = TickTak;
+      len = random(4, 16);  // 5 = 9  x = 45 )))))))
+      /*
+            melody1();
+            delay(1000);
+            sleepNow();
+            melody2();
+      */
     }
     delay(10);
   } else buttonPressTimer = 0;
