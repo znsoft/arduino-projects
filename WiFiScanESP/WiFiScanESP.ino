@@ -13,11 +13,15 @@ const char *ssid = "PPAP";
 const char *password = "12345678";
 ESP8266WebServer server ( 80 );
 IPAddress myIP;
+ADC_MODE(ADC_VCC);
+const int led = LED_BUILTIN;
 
-const int led = 13;
+void LedOff(){digitalWrite ( led, HIGH );}
+void LedOn(){digitalWrite ( led, LOW );}
+
 
 void handleRoot() {
-  digitalWrite ( led, 1 );
+  LedOn();
   char temp[400];
   int sec = millis() / 1000;
   int min = sec / 60;
@@ -44,12 +48,12 @@ void handleRoot() {
              hr, min % 60, sec % 60
            );
   server.send ( 200, "text/html", temp );
-  digitalWrite ( led, 0 );
+  LedOff();
 }
 
 
 void handleNotFound() {
-  digitalWrite ( led, 1 );
+  LedOn();
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -64,14 +68,14 @@ void handleNotFound() {
   }
 
   server.send ( 404, "text/plain", message );
-  digitalWrite ( led, 0 );
+  LedOff();
 }
 
 
 void setup() {
   Serial.begin(115200);
   pinMode ( led, OUTPUT );
-  digitalWrite ( led, 0 );
+  LedOff();
   delay(1000);
   Serial.print("Configuring access point...");
   WiFi.mode(WIFI_AP_STA);
@@ -104,7 +108,7 @@ void drawGraph() {
   out += "<g stroke=\"black\">\n";
   int y = rand() % 130;
   for (int x = 10; x < 390; x += 10) {
-    int y2 = rand() % 130;
+    int y2 = ESP.getVcc() % 130;
     sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
     out += temp;
     y = y2;
@@ -116,7 +120,7 @@ void drawGraph() {
 
 void Scan() {
 
-  digitalWrite ( led, 1 );
+  LedOn();
   String scanTemp;
 
   //char temp[400], scanTemp[500];
@@ -147,8 +151,12 @@ void Scan() {
       scanTemp += WiFi.SSID(i);
       scanTemp += " (";
       scanTemp +=  WiFi.RSSI(i);
-      scanTemp +=  ")";
+      scanTemp +=  ") on channel ";
+      scanTemp +=  WiFi.channel(i);
       scanTemp += (WiFi.encryptionType(i) == ENC_TYPE_NONE) ? " " : "*";
+      scanTemp += " {";
+      scanTemp +=  WiFi.BSSIDstr(i);
+      scanTemp +=  "}";
 
     }
 
@@ -157,7 +165,7 @@ void Scan() {
 </html>";
   server.send ( 200, "text/html", scanTemp);
 
-  digitalWrite ( led, 0 );
+  LedOff();
 
 
 }
