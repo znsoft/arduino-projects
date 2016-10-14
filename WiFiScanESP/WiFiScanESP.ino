@@ -7,13 +7,17 @@
 //#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-
+#ifdef ESP8266
+extern "C" {
+#include "user_interface.h"
+}
+#endif
 /* Set these to your desired credentials. */
 const char *ssid = "PPAP";
 const char *password = "12345678";
 ESP8266WebServer server ( 80 );
 IPAddress myIP;
-
+ADC_MODE(ADC_VCC);
 const int led = 13;
 
 void handleRoot() {
@@ -37,11 +41,10 @@ void handleRoot() {
     <h1>Hello from ESP8266!</h1>\
     <p>Uptime: %02d:%02d:%02d</p>\
     <br><a href=\"/scan\">Scan WIFI</a><br>\
-    <img src=\"/test.svg\" />\
+    <img src=\"/test.svg\" /><br>Voltage = %d\
   </body>\
 </html>",
-
-             hr, min % 60, sec % 60
+             hr, min % 60, sec % 60, ESP.getVcc()
            );
   server.send ( 200, "text/html", temp );
   digitalWrite ( led, 0 );
@@ -69,6 +72,7 @@ void handleNotFound() {
 
 
 void setup() {
+  
   Serial.begin(115200);
   pinMode ( led, OUTPUT );
   digitalWrite ( led, 0 );
