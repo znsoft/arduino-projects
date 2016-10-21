@@ -1,13 +1,11 @@
+
 #include "ESP8266WiFi.h"
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266SSDP.h>
+#include "OneWireSlave.h"
 #include <DNSServer.h>
-#include <Servo.h> 
- 
-Servo myservo;  // create servo object to control a servo 
-                // twelve servo objects can be created on most boards
  
 #ifdef ESP8266
 extern "C" {
@@ -23,13 +21,20 @@ const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 4, 1);
 DNSServer dnsServer;
 
+unsigned char rom[8] = {0x28, 0xAD, 0xDA, 0xCE, 0x0F, 0x00, 0x11, 0x00};
+
+unsigned char scratchpad[10] = {0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01};
+
+//{0x01, 0xC8, 0x01, 0x4B, 0x46, 0x7F, 0xFF, 0x08, 0x10, 0x3F};
+ 
+OneWireSlave ds(2);
+
 ESP8266WebServer server ( 80 );
 IPAddress myIP;
 ADC_MODE(ADC_VCC);
 const int led = 13;
 
 const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
-int pos = 180;
 
 
 void handleRoot() {
@@ -84,6 +89,11 @@ void handleNotFound() {
 
 
 void setup() {
+  ds.init(rom);
+
+  //void loop() {
+  ds.waitForRequest(false);
+//} 
 
   Serial.begin(115200);
   pinMode ( led, OUTPUT );
@@ -117,9 +127,6 @@ void setup() {
   server.on ( "/test.svg", drawGraph );
   server.on ( "/scan", Scan );
   server.on ( "/inline", []() {
-    pos ++;
-//    pos = pos%180;
-    myservo.write(pos&127);
     server.send ( 200, "text/plain", "this works as well" );
   } );
   server.onNotFound ( handleNotFound );
@@ -178,7 +185,6 @@ void setup() {
 
   MDNS.addService("http", "tcp", 80);
   Serial.println ( "HTTP server started" );
-  myservo.attach(2);  // attaches the servo on GIO2 to the servo object 
 
   Serial.println("Setup done");
 }
