@@ -1,24 +1,36 @@
-/*
-    This sketch demonstrates how to scan WiFi networks.
-    The API is almost the same as with the WiFi Shield library,
-    the most obvious difference being the different file you need to include:
-*/
 #include "ESP8266WiFi.h"
-//#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266SSDP.h>
+#include <DNSServer.h>
+#include <Servo.h> 
+ 
+Servo myservo;  // create servo object to control a servo 
+                // twelve servo objects can be created on most boards
+ 
 #ifdef ESP8266
 extern "C" {
 #include "user_interface.h"
 }
 #endif
 /* Set these to your desired credentials. */
+const char* host = "ppap";
 const char *ssid = "PPAP";
 const char *password = "12345678";
+
+const byte DNS_PORT = 53;
+IPAddress apIP(192, 168, 4, 1);
+DNSServer dnsServer;
+
 ESP8266WebServer server ( 80 );
 IPAddress myIP;
 ADC_MODE(ADC_VCC);
 const int led = 13;
+
+const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
+int pos = 180;
+
 
 void handleRoot() {
   digitalWrite ( led, 1 );
@@ -72,7 +84,7 @@ void handleNotFound() {
 
 
 void setup() {
-  
+
   Serial.begin(115200);
   pinMode ( led, OUTPUT );
   digitalWrite ( led, 0 );
@@ -84,17 +96,89 @@ void setup() {
   // Set WiFi to station mode and disconnect from an AP if it was previously connected
   //  WiFi.disconnect();
 
+  // modify TTL associated  with the domain name (in seconds)
+  // default is 60 seconds
+  dnsServer.setTTL(300);
+  // set which return code will be used for all other domains (e.g. sending
+  // ServerFailure instead of NonExistentDomain will reduce number of queries
+  // sent by clients)
+  // default is DNSReplyCode::NonExistentDomain
+  dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
+
+  // start DNS server for a specific domain name
+  dnsServer.start(DNS_PORT, "www.ppap.ru", apIP);
+
+
+
   myIP = WiFi.softAPIP();
+  MDNS.begin(host);
   Serial.println(myIP);
   server.on ( "/", handleRoot );
   server.on ( "/test.svg", drawGraph );
   server.on ( "/scan", Scan );
   server.on ( "/inline", []() {
+    pos ++;
+//    pos = pos%180;
+    myservo.write(pos&127);
     server.send ( 200, "text/plain", "this works as well" );
   } );
   server.onNotFound ( handleNotFound );
+  server.on("/firmware", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "text/html", serverIndex);
+  });
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.setDebugOutput(true);
+      WiFiUDP::stopAll();
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+      if (!Update.begin(maxSketchSpace)) { //start with max available size
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) { //true to set the size to the current progress
+        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+      Serial.setDebugOutput(false);
+    }
+    yield();
+  });
+
+  server.on("/description.xml", HTTP_GET, []() {
+    SSDP.schema(server.client());
+  });
+
   server.begin();
+
+  SSDP.setSchemaURL("description.xml");
+  SSDP.setHTTPPort(80);
+  SSDP.setName("Philips hue clone");
+  SSDP.setSerialNumber("001788102201");
+  SSDP.setURL("index.html");
+  SSDP.setModelName("Philips hue bridge 2012");
+  SSDP.setModelNumber("929000226503");
+  SSDP.setModelURL("http://www.meethue.com");
+  SSDP.setManufacturer("Royal Philips Electronics");
+  SSDP.setManufacturerURL("http://www.philips.com");
+  SSDP.begin();
+
+  MDNS.addService("http", "tcp", 80);
   Serial.println ( "HTTP server started" );
+  myservo.attach(2);  // attaches the servo on GIO2 to the servo object 
 
   Serial.println("Setup done");
 }
@@ -167,5 +251,6 @@ void Scan() {
 }
 
 void loop() {
+  dnsServer.processNextRequest();
   server.handleClient();
 }
