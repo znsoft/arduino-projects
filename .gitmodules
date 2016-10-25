@@ -1,0 +1,3 @@
+[submodule "Consult"]
+	path = Consult
+	url = https://github.com/znsoft/Arduino-Nissan-Consult-Library
