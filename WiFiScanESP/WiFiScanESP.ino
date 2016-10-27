@@ -1,28 +1,24 @@
-
 #include "ESP8266WiFi.h"
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266SSDP.h>
-//#include "OneWireSlave.h"
 #include <DNSServer.h>
-//typedef bool boolean;
+#include <ESP8266HTTPUpdateServer.h>
 
 #ifdef ESP8266
 extern "C" {
 #include "user_interface.h"
 }
 #endif
+
 #include "Consult.h"
 #include "ConsultConversionFunctions.h"
 #include "ConsultRegister.h"
 #include "ConsultErrorCode.h"
 
-
-
 // Define global myConsult object
 Consult myConsult = Consult();
-
 
 /* Set these to your desired credentials. */
 const char* host = "ppap";
@@ -34,12 +30,64 @@ IPAddress apIP(192, 168, 4, 1);
 DNSServer dnsServer;
 
 ESP8266WebServer server ( 80 );
+ESP8266HTTPUpdateServer httpUpdater;
 IPAddress myIP;
 ADC_MODE(ADC_VCC);
 
+void setup() {
 
-const char* serverIndex = "<form method='POST' action='/update' enctype='multipart/form-data'><input type='file' name='update'><input type='submit' value='Update'></form>";
+  // Tell Consult which Serial object to use to talk to the ECU
+  myConsult.setSerial(&Serial);
 
+  // We want MPH and Farenheit, so pass in false
+  // If you want KPH or Celcius, pass in true
+  myConsult.setMetric(true);
+
+
+  WiFi.mode(WIFI_AP_STA);
+  /* You can remove the password parameter if you want the AP to be open. */
+  WiFi.softAP(ssid);//password);http://esp8266.github.io/Arduino/versions/2.1.0-rc1/doc/libraries.html
+  dnsServer.setTTL(300);
+  dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
+  dnsServer.start(DNS_PORT, "www.ppap.ru", apIP);
+
+  myIP = WiFi.softAPIP();
+  MDNS.begin(host);
+  server.on ( "/", handleRoot );
+  server.on ( "/obd", handleOBD );
+  server.on ( "/test.svg", drawGraph );
+  server.on ( "/scan", Scan );
+  server.on ( "/clearerrorcodes", ClearOBDErrors );
+  server.on ( "/inline", []() {
+    server.send ( 200, "text/plain", "this works as well" );
+  } );
+  server.onNotFound ( handleNotFound );
+  httpUpdater.setup(&server);
+
+  server.on("/description.xml", HTTP_GET, []() {
+    SSDP.schema(server.client());
+  });
+
+  server.begin();
+
+  SSDP.setSchemaURL("description.xml");
+  SSDP.setHTTPPort(80);
+  SSDP.setName("Philips hue clone");
+  SSDP.setSerialNumber("001788102201");
+  SSDP.setURL("index.html");
+  SSDP.setModelName("Philips hue bridge 2012");
+  SSDP.setModelNumber("929000226503");
+  SSDP.setModelURL("http://www.meethue.com");
+  SSDP.setManufacturer("Royal Philips Electronics");
+  SSDP.setManufacturerURL("http://www.philips.com");
+  SSDP.begin();
+  MDNS.addService("http", "tcp", 80);
+}
+
+void loop() {
+  dnsServer.processNextRequest();
+  server.handleClient();
+}
 
 void handleRoot() {
 
@@ -62,7 +110,8 @@ void handleRoot() {
     <h1>Hello from ESP8266!</h1>\
     <p>Uptime: %02d:%02d:%02d</p>\
     <br><a href=\"/scan\">Scan WIFI</a><br>\
-    <img src=\"/test.svg\" /><br>Voltage = %d\
+    <br><a href=\"/obd\"> OBD 2 </a><br>\
+    <img src=\"/test.svg\" /><br>   Voltage = %d\
   </body>\
 </html>",
              hr, min % 60, sec % 60, ESP.getVcc()
@@ -70,7 +119,6 @@ void handleRoot() {
   server.send ( 200, "text/html", temp );
 
 }
-
 
 void handleNotFound() {
 
@@ -91,10 +139,6 @@ void handleNotFound() {
 
 }
 
-
-
-
-
 void drawGraph() {
   String out = "";
 
@@ -103,7 +147,7 @@ void drawGraph() {
   out += "<g stroke=\"black\">\n";
   int y = rand() % 130;
   for (int x = 10; x < 390; x += 10) {
-    int y2 = rand() % 130;
+    int y2 = ESP.getVcc() % 130;
     char temp[100];
     sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
     out += temp;
@@ -148,7 +192,8 @@ void Scan() {
       scanTemp += " (";
       scanTemp +=  WiFi.RSSI(i);
       scanTemp +=  ")";
-      scanTemp += (WiFi.encryptionType(i) == ENC_TYPE_NONE) ? " " : "*";
+      scanTemp +=  WiFi.BSSIDstr(i);
+      scanTemp += (WiFi.encryptionType(i) == ENC_TYPE_NONE) ? "  " : " *";
     }
 
   }
@@ -157,14 +202,16 @@ void Scan() {
   server.send ( 200, "text/html", scanTemp);
 }
 
-
-void OBDcmd(String command) {
+void ClearOBDErrors() {
+  myConsult.initEcu();
+  myConsult.clearErrorCodes();
+  handleOBD();
 }
 
-void handleOBD() {
-  String message = "<html>\
+String GetOBDMessage(){
+    String message = "<html>\
   <head>\
-    <meta http-equiv='refresh' content='5'/>\
+    <meta http-equiv='refresh' content='5;url=/obd'/>\
     <title>ESP8266 OBD Demo</title>\
     <style>\
       body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
@@ -172,115 +219,111 @@ void handleOBD() {
   </head>\
   <body>\
     <h1>OBD</h1>";
-  if (myConsult.initEcu() == false) message += "<br>OBD FAILED";
+  if (myConsult.initEcu() == false) {message += "<br>OBD FAILED";  return message; }
+
+
+  int numberOfErrorCodes = 0;
+  ConsultErrorCode errorCode = ConsultErrorCode();
+  if (myConsult.getNumberOfErrorCodes(&numberOfErrorCodes)) {
+    message +=  "<br> " + String( numberOfErrorCodes , DEC ) + " Errors:   -=<a href=/clearerrorcodes>Clear</a>=-";
+
+
+    // Then retrieve each code and display
+    for (int x = 1; x <= numberOfErrorCodes; x++) {
+      // Display which code number
+      // Attempt to pull code
+      if (myConsult.getErrorCode(x, &errorCode)) {
+        // Got our error code
+        errorCode.getCode();
+        errorCode.getLastSeen();
+        message +=  "<br> Er = " + String( errorCode.getCode(), HEX) + " , Last seen  " + String( errorCode.getLastSeen(), HEX);
+      }
+    }
+  }
+  
+  int coolantTemp;
+  if (myConsult.getRegisterValue(ECU_REGISTER_COOLANT_TEMP, ECU_REGISTER_NULL, &coolantTemp)) {
+    // coolantTemp now contains the temp, but we need to convert it to something human readable
+    coolantTemp = ConsultConversionFunctions::convertCoolantTemp(coolantTemp);
+    message +=  "<br>Coolant temp  = " + String( coolantTemp , DEC ) + ". ";
+
+  }
+
+  // Attempt to read Tachometer,
+  // This register spans two registers, first pass in MSB, then LSB
+  int tach;
+  if (myConsult.getRegisterValue(ECU_REGISTER_TACH_MSB, ECU_REGISTER_TACH_LSB, &tach)) {
+    // tach now contains the tach value, but we need to convert it to something human readable
+    tach = ConsultConversionFunctions::convertTachometer(tach);
+    message +=  "<br>Tachometer = " + String( tach , DEC ) + ". ";
+
+  }
+
   char partNumber[12];
   if (myConsult.getEcuPartNumber(partNumber)) {
-    message += partNumber;
+    message += "<br>PN = " + String(partNumber);
   }
+ /* 
+  
+    // Create an Array of ConsultRegisters we want to read
+  int numRegisters = 5;
+  ConsultRegister myRegisters[numRegisters];
+  
+  // Create a register classes for each register type
+  // Pass in a label to describe it, the register Addresses, and a function pointer to the function that
+  // will convert the value from the ECU value to something human readable
+  myRegisters[0] = ConsultRegister("Coolant", ECU_REGISTER_COOLANT_TEMP, ECU_REGISTER_NULL, &ConsultConversionFunctions::convertCoolantTemp);
+  myRegisters[1] = ConsultRegister("Timing", ECU_REGISTER_IGNITION_TIMING, ECU_REGISTER_NULL, &ConsultConversionFunctions::convertIgnitionTiming);
+  myRegisters[2] = ConsultRegister("Battery", ECU_REGISTER_BATTERY_VOLTAGE, ECU_REGISTER_NULL, &ConsultConversionFunctions::convertBatteryVoltage);
+  myRegisters[3] = ConsultRegister("Speed", ECU_REGISTER_VEHICLE_SPEED, ECU_REGISTER_NULL, &ConsultConversionFunctions::convertVehicleSpeed);
+  myRegisters[4] = ConsultRegister("Tach", ECU_REGISTER_TACH_MSB, ECU_REGISTER_TACH_LSB, &ConsultConversionFunctions::convertTachometer);
+
+  // Now that we've defined these, we want to continuely poll the ecu for these values
+  if (myConsult.startEcuStream(myRegisters, numRegisters)) {
+    // Read registers 3 times from the ecu
+    for (int x=0; x<3; x++) {
+      // Read ecu stream
+      if (myConsult.readEcuStream(myRegisters, numRegisters)) {
+        // Loop thru values
+        for (int y=0; y<numRegisters; y++) {
+           // Has each registers updated value
+          myRegisters[y].getValue();
+          
+          // Display updated value to LCD
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print(myRegisters[y].getLabel());
+          lcd.setCursor(0,1);
+          lcd.print(myRegisters[y].getValue());
+          
+          // Small pause          
+          delay(500);
+        }
+      }
+      else {
+        // Error, failed to read stream
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Failed to read stream!");
+      }
+    }
+    lcd.setCursor(0,2);
+    lcd.print("Stopping stream");
+    // Stop ecu stream
+    myConsult.stopEcuStream();
+
+  */
+return message;
+  }
+
+
+void handleOBD() {
+ String message = GetOBDMessage(); 
+  
   message += "<br>end</body>\
 </html>";
-  server.send ( 200, "text/plain", message );
+ server.send ( 200, "text/html", message );
 
 }
 
 
-void setup() {
-
-  // Tell Consult which Serial object to use to talk to the ECU
-  myConsult.setSerial(&Serial);
-
-  // We want MPH and Farenheit, so pass in false
-  // If you want KPH or Celcius, pass in true
-  myConsult.setMetric(false);
-
-
-  WiFi.mode(WIFI_AP_STA);
-  /* You can remove the password parameter if you want the AP to be open. */
-  WiFi.softAP(ssid);//password);http://esp8266.github.io/Arduino/versions/2.1.0-rc1/doc/libraries.html
-  // Set WiFi to station mode and disconnect from an AP if it was previously connected
-  //  WiFi.disconnect();
-
-  // modify TTL associated  with the domain name (in seconds)
-  // default is 60 seconds
-  dnsServer.setTTL(300);
-  // set which return code will be used for all other domains (e.g. sending
-  // ServerFailure instead of NonExistentDomain will reduce number of queries
-  // sent by clients)
-  // default is DNSReplyCode::NonExistentDomain
-  dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
-
-  // start DNS server for a specific domain name
-  dnsServer.start(DNS_PORT, "www.ppap.ru", apIP);
-
-
-
-  myIP = WiFi.softAPIP();
-  MDNS.begin(host);
-  server.on ( "/", handleRoot );
-  server.on ( "/obd", handleOBD );
-  server.on ( "/test.svg", drawGraph );
-  server.on ( "/scan", Scan );
-  server.on ( "/inline", []() {
-    server.send ( 200, "text/plain", "this works as well" );
-  } );
-  server.onNotFound ( handleNotFound );
-  server.on("/firmware", HTTP_GET, []() {
-    server.sendHeader("Connection", "close");
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.send(200, "text/html", serverIndex);
-  });
-  server.on("/update", HTTP_POST, []() {
-    server.sendHeader("Connection", "close");
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-    ESP.restart();
-  }, []() {
-    HTTPUpload& upload = server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      Serial.setDebugOutput(true);
-      WiFiUDP::stopAll();
-      Serial.printf("Update: %s\n", upload.filename.c_str());
-      uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
-      if (!Update.begin(maxSketchSpace)) { //start with max available size
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-        Update.printError(Serial);
-      }
-    } else if (upload.status == UPLOAD_FILE_END) {
-      if (Update.end(true)) { //true to set the size to the current progress
-        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
-      } else {
-        Update.printError(Serial);
-      }
-      Serial.setDebugOutput(false);
-    }
-    yield();
-  });
-
-  server.on("/description.xml", HTTP_GET, []() {
-    SSDP.schema(server.client());
-  });
-
-  server.begin();
-
-  SSDP.setSchemaURL("description.xml");
-  SSDP.setHTTPPort(80);
-  SSDP.setName("Philips hue clone");
-  SSDP.setSerialNumber("001788102201");
-  SSDP.setURL("index.html");
-  SSDP.setModelName("Philips hue bridge 2012");
-  SSDP.setModelNumber("929000226503");
-  SSDP.setModelURL("http://www.meethue.com");
-  SSDP.setManufacturer("Royal Philips Electronics");
-  SSDP.setManufacturerURL("http://www.philips.com");
-  SSDP.begin();
-  MDNS.addService("http", "tcp", 80);
-}
-
-
-void loop() {
-  dnsServer.processNextRequest();
-  server.handleClient();
-}
