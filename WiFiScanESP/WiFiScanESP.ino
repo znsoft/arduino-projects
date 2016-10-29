@@ -35,7 +35,7 @@ IPAddress myIP;
 ADC_MODE(ADC_VCC);
 
 void setup() {
-
+  pinMode(LED_BUILTIN, OUTPUT);
   // Tell Consult which Serial object to use to talk to the ECU
   myConsult.setSerial(&Serial);
 
@@ -54,6 +54,40 @@ void setup() {
   myIP = WiFi.softAPIP();
   MDNS.begin(host);
   server.on ( "/", handleRoot );
+  server.on ( "/reset", []() {
+    ESP.reset();
+  } );
+  server.on ( "/tx1", []() {
+    pinMode(1, OUTPUT);
+    pinMode(3, OUTPUT);
+    digitalWrite(1, HIGH);
+    digitalWrite(3, HIGH);
+    digitalWrite(LED_BUILTIN, HIGH);
+    server.send ( 200, "text/plain", "ON" );
+  } );
+
+
+  server.on ( "/rx", []() {
+    pinMode(1, INPUT);
+    pinMode(3, INPUT);
+    digitalWrite(1, LOW);
+    digitalWrite(3, LOW);
+    digitalWrite(LED_BUILTIN, HIGH);
+    String s = " gpio1 = " + String(digitalRead(1), HEX) + "; gpio3 = " + String(digitalRead(3), HEX);
+    server.send ( 200, "text/plain", s );
+  } );
+
+
+
+  server.on ( "/tx0", []() {
+    pinMode(1, OUTPUT);
+    pinMode(3, OUTPUT);
+    digitalWrite(1, LOW);
+    digitalWrite(3, LOW);
+    digitalWrite(LED_BUILTIN, LOW);
+    server.send ( 200, "text/plain", "OFF" );
+  } );
+
   server.on ( "/obd", handleOBD );
   server.on ( "/test.svg", drawGraph );
   server.on ( "/scan", Scan );
@@ -89,15 +123,16 @@ void loop() {
   server.handleClient();
 }
 
+//..----------
+
+
 void handleRoot() {
 
-  char temp[400];
+  char temp[500];
   int sec = millis() / 1000;
   int min = sec / 60;
   int hr = min / 60;
-
-  snprintf ( temp, 400,
-
+  snprintf ( temp, 500,
              "<html>\
   <head>\
     <meta http-equiv='refresh' content='5'/>\
@@ -107,11 +142,11 @@ void handleRoot() {
     </style>\
   </head>\
   <body>\
-    <h1>Hello from ESP8266!</h1>\
-    <p>Uptime: %02d:%02d:%02d</p>\
+    <h1>OBD ESP8266</h1>\
+    <p>Uptime: %02d:%02d:%02d  Voltage = %d mV</p>\
     <br><a href=\"/scan\">Scan WIFI</a><br>\
     <br><a href=\"/obd\"> OBD 2 </a><br>\
-    <img src=\"/test.svg\" /><br>   Voltage = %d\
+    <img src=\"/test.svg\" /><br>\
   </body>\
 </html>",
              hr, min % 60, sec % 60, ESP.getVcc()
@@ -138,7 +173,7 @@ void handleNotFound() {
   server.send ( 404, "text/plain", message );
 
 }
-
+int y = 0;
 void drawGraph() {
   String out = "";
 
@@ -147,7 +182,7 @@ void drawGraph() {
   out += "<g stroke=\"black\">\n";
   int y = rand() % 130;
   for (int x = 10; x < 390; x += 10) {
-    int y2 = ESP.getVcc() % 130;
+    int y2 = ESP.getVcc() % 120;
     char temp[100];
     sprintf(temp, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke-width=\"1\" />\n", x, 140 - y, x + 10, 140 - y2);
     out += temp;
@@ -208,8 +243,8 @@ void ClearOBDErrors() {
   handleOBD();
 }
 
-String GetOBDMessage(){
-    String message = "<html>\
+String GetOBDMessage() {
+  String message = "<html>\
   <head>\
     <meta http-equiv='refresh' content='5;url=/obd'/>\
     <title>ESP8266 OBD Demo</title>\
@@ -219,9 +254,12 @@ String GetOBDMessage(){
   </head>\
   <body>\
     <h1>OBD</h1>";
-  if (myConsult.initEcu() == false) {message += "<br>OBD FAILED";  return message; }
+  if (myConsult.initEcu() == false) {
+    message += "<br>OBD CONSULT FAILED .... ";
+    return message;
+  }
 
-
+  message += "<br>OBD INIT OK<br>Try to get last errors...";
   int numberOfErrorCodes = 0;
   ConsultErrorCode errorCode = ConsultErrorCode();
   if (myConsult.getNumberOfErrorCodes(&numberOfErrorCodes)) {
@@ -240,7 +278,8 @@ String GetOBDMessage(){
       }
     }
   }
-  
+  message += "<br>Try to get coolantTemp";
+
   int coolantTemp;
   if (myConsult.getRegisterValue(ECU_REGISTER_COOLANT_TEMP, ECU_REGISTER_NULL, &coolantTemp)) {
     // coolantTemp now contains the temp, but we need to convert it to something human readable
@@ -250,6 +289,8 @@ String GetOBDMessage(){
   }
 
   // Attempt to read Tachometer,
+  message += "<br>Attempt to read Tachometer";
+
   // This register spans two registers, first pass in MSB, then LSB
   int tach;
   if (myConsult.getRegisterValue(ECU_REGISTER_TACH_MSB, ECU_REGISTER_TACH_LSB, &tach)) {
@@ -259,16 +300,18 @@ String GetOBDMessage(){
 
   }
 
+  message += "<br>getEcuPartNumber";
+
   char partNumber[12];
   if (myConsult.getEcuPartNumber(partNumber)) {
     message += "<br>PN = " + String(partNumber);
   }
- /* 
-  
-    // Create an Array of ConsultRegisters we want to read
+
+  message += "<br>Create an Array of ConsultRegisters";
+  // Create an Array of ConsultRegisters we want to read
   int numRegisters = 5;
   ConsultRegister myRegisters[numRegisters];
-  
+
   // Create a register classes for each register type
   // Pass in a label to describe it, the register Addresses, and a function pointer to the function that
   // will convert the value from the ECU value to something human readable
@@ -281,48 +324,32 @@ String GetOBDMessage(){
   // Now that we've defined these, we want to continuely poll the ecu for these values
   if (myConsult.startEcuStream(myRegisters, numRegisters)) {
     // Read registers 3 times from the ecu
-    for (int x=0; x<3; x++) {
+    for (int x = 0; x < 3; x++) {
+      message += "<br>Read registers 3 times from the ecu";
+
       // Read ecu stream
       if (myConsult.readEcuStream(myRegisters, numRegisters)) {
         // Loop thru values
-        for (int y=0; y<numRegisters; y++) {
-           // Has each registers updated value
+        for (int y = 0; y < numRegisters; y++) {
+          // Has each registers updated value
           myRegisters[y].getValue();
-          
-          // Display updated value to LCD
-          lcd.clear();
-          lcd.setCursor(0,0);
-          lcd.print(myRegisters[y].getLabel());
-          lcd.setCursor(0,1);
-          lcd.print(myRegisters[y].getValue());
-          
-          // Small pause          
-          delay(500);
+          message += "<br>" + String(myRegisters[y].getLabel()) + " = " + String(myRegisters[y].getValue());
         }
       }
-      else {
-        // Error, failed to read stream
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print("Failed to read stream!");
-      }
     }
-    lcd.setCursor(0,2);
-    lcd.print("Stopping stream");
     // Stop ecu stream
     myConsult.stopEcuStream();
-
-  */
-return message;
   }
+  return message;
+}
 
 
 void handleOBD() {
- String message = GetOBDMessage(); 
-  
+  String message = GetOBDMessage();
+
   message += "<br>end</body>\
 </html>";
- server.send ( 200, "text/html", message );
+  server.send ( 200, "text/html", message );
 
 }
 
