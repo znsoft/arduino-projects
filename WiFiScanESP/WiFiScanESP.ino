@@ -246,7 +246,7 @@ void ClearOBDErrors() {
 String GetOBDMessage() {
   String message = "<html>\
   <head>\
-    <meta http-equiv='refresh' content='5;url=/obd'/>\
+    <meta http-equiv='refresh' content='35;url=/obd'/>\
     <title>ESP8266 OBD Demo</title>\
     <style>\
       body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
@@ -259,7 +259,7 @@ String GetOBDMessage() {
     return message;
   }
 
-  message += "<br>OBD INIT OK<br>Try to get last errors...";
+  message += "<br>OBD INIT OK<br>-=<a href=/clearerrorcodes>Clear</a>=-<br>Try to get last errors...";
   int numberOfErrorCodes = 0;
   ConsultErrorCode errorCode = ConsultErrorCode();
   if (myConsult.getNumberOfErrorCodes(&numberOfErrorCodes)) {
@@ -346,8 +346,10 @@ String GetOBDMessage() {
 
 void handleOBD() {
   String message = GetOBDMessage();
-
-  message += "<br>end</body>\
+ message += "<br>Debug Log: <p>";
+ message += myConsult.GetMyDebug();
+ myConsult.ClrMyDebug();
+  message += "</p><br>end</body>\
 </html>";
   server.send ( 200, "text/html", message );
 
