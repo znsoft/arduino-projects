@@ -1,0 +1,133 @@
+  <html>
+  <meta charset="utf-8" />
+  <title>LeraCar</title>
+  <style> button {
+      border-style: none;
+          border-color: inherit;
+          border-width: medium;
+          background-color: #4CAF50; /* Green */
+          color: white;
+          padding: 15px 32px;
+          text-align: center;
+          text-decoration: none;
+          display: inline-block;
+          font-size: 16px;
+          font-family: "Wingdings 3";
+      }
+      .style2
+      {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: xx-large;
+      }
+      #voltage
+      {
+          width: 259px;
+      }
+      #output
+      {
+          width: 259px;
+      }
+  </style>
+  <script language="javascript" type="text/javascript">
+
+  var wsUri = "ws://192.168.4.1:81";
+  var output;
+
+  function init()
+  {
+    output = document.getElementById("output");
+    testWebSocket();
+  }
+
+  function testWebSocket()
+  {
+    websocket = new WebSocket(wsUri);
+    websocket.onopen = function(evt) { onOpen(evt) };
+    websocket.onclose = function(evt) { onClose(evt) };
+    websocket.onmessage = function(evt) { onMessage(evt) };
+    websocket.onerror = function(evt) { onError(evt) };
+  }
+
+  function onOpen(evt)
+  {
+    output.innerHTML = "CONNECTED";
+  }
+
+  function onClose(evt)
+  {
+     output.innerHTML = "DISCONNECTED";
+    testWebSocket();
+  }
+
+  function onMessage(evt)
+  {
+    document.getElementById("voltage").innerHTML = (evt.data/1000) + " V";
+    //websocket.close();
+  }
+
+  function onError(evt)
+  {
+    writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+  }
+
+  function doSend(message)
+  {
+    websocket.send(message);
+  }
+
+  function writeToScreen(message)
+  {
+    var pre = document.createElement("p");
+    pre.style.wordWrap = "break-word";
+    pre.innerHTML = message;
+    output.appendChild(pre);
+  }
+
+   function mouseCoords(e) {
+    if (document.all)  { 
+      x = event.x + document.body.scrollLeft; 
+      y = event.y + document.body.scrollTop; 
+    } else {
+      x = e.pageX; 
+      y = e.pageY; 
+    }
+   // output.innerHTML = "X : " + x + ", Y : " + y;
+   }
+
+  window.addEventListener("load", init, false);
+  window.setInterval("doSend('v')" , 1000);
+  </script>
+
+<body onmouseover="mouseCoords(event)">
+  <h6 style="height: 2px; width: 262px">Car control</h6>
+    <table id = "buttons" cellpadding="2" 
+        style="width: 259px; height: 169px; background-color: #FFCC99;">
+        <tr>
+            <td>
+                &nbsp;</td>
+            <td><button onclick='doSend("f")'>h</button>
+                &nbsp;</td>
+            <td>
+                &nbsp;</td>
+        </tr>
+        <tr>
+            <td><button onmousedown='doSend("l")' onmouseup='doSend("n")' ></button>
+                &nbsp;</td>
+            <td><button onclick='doSend("s")'>o</button>
+                &nbsp;</td>
+            <td><button onmousedown='doSend("r")'  onmouseup='doSend("n")' ></button>
+                &nbsp;</td>
+        </tr>
+        <tr>
+            <td>
+                &nbsp;</td>
+            <td><button onclick='doSend("b")'>i</button>
+                &nbsp;</td>
+            <td>
+                &nbsp;</td>
+        </tr>
+    </table>
+  <div id="voltage"></div>
+  <div id="output"></div>
+  </body>
+  </html>
