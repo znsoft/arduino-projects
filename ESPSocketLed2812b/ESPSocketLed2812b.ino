@@ -11,17 +11,20 @@
 #include <NeoPixelAnimator.h>
 #include <IRremoteESP8266.h>
 
-int RECV_PIN = 3; //an IR detector/demodulatord is connected to GPIO pin 2
+int RECV_PIN = 2; //an IR detector/demodulatord is connected to GPIO pin 2
 
 IRrecv irrecv(RECV_PIN);
 
 decode_results results;
 
+int lightness = 1000;
 
-
+int ButtonPin = 1;//TX
 const uint16_t PixelCount = 150; // make sure to set this to the number of pixels in your strip
 const uint8_t PixelPin = 2;  // make sure to set this to the correct pin, ignored for Esp8266
 const RgbColor CylonEyeColor(HtmlColor(0x7f0000));
+
+RgbColor currentColor = NULL;
 
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount, PixelPin);
 // for esp8266 omit the pin
@@ -33,6 +36,36 @@ int speedPixel = 1;
 uint16_t lastPixel = 0; // track the eye position
 int8_t moveDir = 1; // track the direction of movement
 uint16_t G_idxPixel;
+
+
+const char* ssid = "LeraTree";
+
+#define LED 13
+
+#define IN false
+#define OUT true
+#define HI true
+#define LO false
+
+int cycleCount;
+int incremet;
+int currentSpeed = 1;
+
+enum Ledmode {
+  RunMode,
+  FillMode,
+  StarsMode,
+  PingPongMode,
+  RainbowMode,
+  RandomMode,
+  SlowMoveMode,
+  Strobo,
+  DemoAll
+};
+
+Ledmode currentMode;
+
+
 // uncomment one of the lines below to see the effects of
 // changing the ease function on the movement animation
 AnimEaseFunction moveEase =
@@ -145,31 +178,7 @@ void SetupAnimations()
 
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-const char* ssid = "LeraTree";
 
-#define LED 13
-
-#define IN false
-#define OUT true
-#define HI true
-#define LO false
-
-int cycleCount;
-int incremet;
-int currentSpeed = 1;
-
-enum Ledmode {
-  RunMode,
-  FillMode,
-  StarsMode,
-  PingPongMode,
-  RainbowMode,
-  RandomMode,
-  SlowMoveMode,
-  DemoAll
-};
-
-Ledmode currentMode;
 
 void SetPixel(RgbColor color) {
   strip.SetPixelColor(strip.PixelCount() - 1 , color);
@@ -268,9 +277,12 @@ RgbColor Wheel(byte WheelPos) {
 void Stars() {
   FadeAll(1);
   RgbColor color;
-  if ((rand() % 3) == 1){
-    color = RgbColor( 255,  255,  255);
-  strip.SetPixelColor(G_idxPixel , color);
+  byte c = (255 * lightness) / 1000;
+  if ((rand() % 6) == 1) {
+
+    color = RgbColor( c,  c,  c);
+    //color.Darken(darkenBy);
+    strip.SetPixelColor(G_idxPixel , color);
   }
 }
 
@@ -280,7 +292,7 @@ void StripEffects( ) {
   RgbColor color;
   G_idxPixel++;
   incremet++;
-  
+  byte strobo = (incremet & currentSpeed)==0?255:0;
   if (G_idxPixel >= strip.PixelCount()) {
     G_idxPixel = 0;
     cycleCount++;
@@ -293,16 +305,22 @@ void StripEffects( ) {
     case FillMode:
       FillAll(NULL);
       break;
+    case Strobo:
+
+      color = RgbColor(strobo, strobo, strobo);
+      FillAll(color);
+      //delay(currentSpeed / 50);
+      break;
     case StarsMode:
-      FadeAll(1);
+    Stars();
       break;
     case PingPongMode:
-
+      theaterChaseRainbow(50);
       break;
 
     case DemoAll:
 
-    switch (cycleCount % 5) {
+      switch (cycleCount % 5) {
 
         case 0:
           rainbow(20);
@@ -311,7 +329,7 @@ void StripEffects( ) {
           rainbowCycle(20);
           break;
         case 2:
-          //theaterChaseRainbow(50);
+          //
           rainbowCycle(20);
           break;
         case 3:
@@ -321,7 +339,7 @@ void StripEffects( ) {
           FadeAll(1);
           break;
         case 5:
-          FadeAll(1);
+          Stars();
           break;
       }
 
@@ -335,9 +353,13 @@ void StripEffects( ) {
 
     case RainbowMode:
 
-      Stars();
+      FadeAll(3);
+      color = RgbColor(rand() & 255, rand() & 255, rand() & 255);
+      strip.SetPixelColor(G_idxPixel , color);
+
 
       break;
+
     case RandomMode:
       //uint32_t rgb = (uint32_t) rand()&255 * rand() * (rand() % 3);
       color = RgbColor(rand() & 255, rand() & 255, rand() & 255);
@@ -379,7 +401,12 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
       // webSocket.broadcastTXT("message here");
 
       switch (payload[0]) {
-        case '#': case '$':
+        case '$':
+          lightness = rgb;
+
+
+          break;
+        case '#':
           SetPixel(color);
           //strip.SetPixelColor(strip.PixelCount()-1, color);
           //FillAll( color);
@@ -417,6 +444,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
         case 's': case 'S':   //Echo
           currentMode = DemoAll;
           break;
+
         case 'o': case 'O': //speed
           speedPixel = (int)rgb;
           break;
@@ -432,6 +460,14 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
 
         case 'm': case 'M':   //Echo
           currentMode = SlowMoveMode;
+          break;
+
+        case 'x': case 'X':   //Echo
+          currentMode = PingPongMode;
+          break;
+
+        case 'e': case 'E':   //Echo
+          currentMode = Strobo;
           break;
 
         default:
@@ -577,10 +613,12 @@ void handleRoot() {
 
 void setup() {
   currentMode = RandomMode;
-
+  pinMode(ButtonPin, INPUT);
+  digitalWrite(ButtonPin, LOW );
   strip.Begin();
   FillAll(HtmlColor(0x7f1f7f));
   strip.Show();
+  //irrecv.enableIRIn();
 
   //SetupAnimations();
 
@@ -648,6 +686,11 @@ void setup() {
   server.begin();
 }
 
+
+int enumIter;
+int pressTime;
+
+
 void loop() {
 
   dnsServer->processNextRequest();
@@ -659,10 +702,27 @@ void loop() {
 
 
   strip.Show();
-  if (irrecv.decode(&results)) {
+  /*
+    if (irrecv.decode(&results)) {
     // Serial.println(results.value, HEX);
+     RgbColor color = HtmlColor(results.value);
+     FillAll(color);
+     currentMode = FillMode;
     irrecv.resume(); // Receive the next value
+    pressTime = 0;
+    }
+  */
+  if (digitalRead(ButtonPin) == 1)pressTime++; else pressTime = 0;
+
+
+  if (pressTime > 30) {
+    enumIter++;
+    pressTime = 0;
+    currentMode = (Ledmode)(enumIter % ((int)DemoAll + 1));
+    //delay(500);
   }
+
+
 
 }
 

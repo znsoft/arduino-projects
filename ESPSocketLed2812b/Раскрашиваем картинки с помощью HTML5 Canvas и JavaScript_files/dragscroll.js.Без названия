@@ -1,0 +1,92 @@
+/* version 0.0.5 http://github.com/asvd/intence */
+
+
+(function (root, factory) {
+    if (typeof define === 'function' && define.amd) {
+        define(['exports'], factory);
+    } else if (typeof exports !== 'undefined') {
+        factory(exports);
+    } else {
+        factory((root.dragscroll = {}));
+    }
+}(this, function (exports) {
+    var _window = window,
+        _document = document,
+        is_touch_device = !!('ontouchstart' in window),
+        mousemove = (is_touch_device) ? 'touchmove':'mousemove',
+        mouseup = (is_touch_device) ? 'touchend':'mouseup',
+        mousedown = (is_touch_device) ? 'touchstart':'mousedown',
+        EventListener = 'EventListener',
+        addEventListener = 'add'+EventListener,
+        removeEventListener = 'remove'+EventListener;
+
+    var dragged = [];
+
+
+	function ypos(e) {
+        if (e.targetTouches && (e.targetTouches.length >= 1)) {
+            return e.targetTouches[0].clientY;
+        }
+        return e.clientY;
+    }
+	function xpos(e) {
+        if (e.targetTouches && (e.targetTouches.length >= 1)) {
+            return e.targetTouches[0].clientX;
+        }
+        return e.clientX;
+    }
+    var reset = function(i, el) {
+        for (i = 0; i < dragged.length;) {
+            el = dragged[i++];
+            el[removeEventListener](mousedown, el.md, 0);
+            _window[removeEventListener](mouseup, el.mu, 0);
+            _window[removeEventListener](mousemove, el.mm, 0);
+        }
+        dragged = _document.getElementsByTagName('pre');
+        for (i = 0; i < dragged.length;) {
+            (function(el, lastClientX, lastClientY, pushed){
+                el[addEventListener](
+                    mousedown,
+                    el.md = function(e) {
+                        pushed = 1;
+                        lastClientX = xpos(e);
+                        lastClientY = ypos(e);
+
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, 0
+                );
+                 
+                 _window[addEventListener](
+                     mouseup, el.mu = function() {pushed = 0;}, 0
+                 );
+                 
+                _window[addEventListener](
+                    mousemove,
+                    el.mm = function(e, scroller) {
+                        scroller = el.scroller||el;
+                        if (pushed) {
+                             scroller.scrollLeft -=
+                                 (- lastClientX + (lastClientX=xpos(e)));
+                             scroller.scrollTop -=
+                                 (- lastClientY + (lastClientY=ypos(e)));
+//console.log(lastClientY +" "+ lastClientX);
+							 // console.log("     -"+scroller.scrollLeft);
+                        }
+                    }, 0
+                );
+
+             })(dragged[i++]);
+        }
+    }
+
+      
+    if (_document.readyState == 'complete') {
+        reset();
+    } else {
+        _window[addEventListener]('load', reset, 0);
+    }
+
+    exports.reset = reset;
+}));
+

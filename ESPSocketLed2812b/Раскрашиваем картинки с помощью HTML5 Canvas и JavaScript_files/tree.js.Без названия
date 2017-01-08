@@ -1,0 +1,36 @@
+tree = function(el,openFullScreen){
+if(document.querySelectorAll(el)){
+var elements = document.querySelectorAll(el+" .fa"),
+	openFullScreen = openFullScreen || true;
+
+toggleShow = function(){
+if(openFullScreen) {
+	if(this.classList.contains('open')){
+		var openedEl = this.parentNode.querySelectorAll(".fa"),
+			l = openedEl.length;
+		for (var i=0; i<l; i++){
+			openedEl[i].classList.remove('open');
+		}
+
+	//не содержит open
+	} else {
+
+			var openedEl = document.querySelectorAll(el+" .open");
+			for (var i=0,ii=openedEl.length; i<ii; i++){
+				openedEl[i].classList.remove('open');
+			}
+		
+			this.classList.add('open');
+
+		}
+	}
+}
+
+	for (var i=0, ii=elements.length;i<ii;i++){
+		elements[i].addEventListener("click", toggleShow, false);
+	}
+}
+}
+
+tree("#mainMenu");
+tree("#submenu");

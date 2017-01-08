@@ -121,6 +121,9 @@ function draw(event) {
 function SetSpeed(e) {
       websocket.send('%'+e.toString(16));
 }
+function SetLight(e) {
+      websocket.send('$'+e.toString(16));
+}
 
 
 
@@ -242,7 +245,7 @@ function Button1_onclick() {
 
 }
 //bflksonrm
-//fmnsrbkl
+//fmnsrbklx
 function Button1_onclick() {
 
 }
@@ -255,6 +258,7 @@ function Button1_onclick() {
     <table id="buttons" cellpadding="2" style="width: 259px; height: 169px; background-color: #FFCC99;">
         <tr>
             <td class="style1">
+    <input type="button" value="XStrobo" onclick="doSend('e')" /><br>
                 <input type="button" value="Demo L" onclick="doSend('l')" />
             </td>
             <td>
@@ -300,11 +304,14 @@ function Button1_onclick() {
             </td>
             <td class="style1">
                 <input type="button" value="Demo K" onclick="doSend('k')" />
+                    <input type="button" value="Ping" onclick="doSend('p')" /><br>
+    <input type="button" value="XFade" onclick="doSend('X')" /><br>
+
             </td>
         </tr>
     </table>
-    <input type="button" value="Ping" onclick="doSend('p')" />
-    <input id="vol-control" type="range" min="0" max="100" step="1"  oninput="SetSpeed(this.value)" onchange="SetSpeed(this.value)"></input>
+    <input id="vol-control" type="range" min="0" max="100" step="1"  oninput="SetSpeed(this.value)" onchange="SetSpeed(this.value)">Speed</input><br>
+    <input id="Light" type="range" min="0" max="1500" step="5"  oninput="SetLight(this.value)" onchange="SetLight(this.value)">Light</input>
     <div id="voltage">
         </div>
     <div id="output">
