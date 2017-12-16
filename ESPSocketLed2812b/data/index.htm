@@ -88,9 +88,27 @@
         text-align: left;
     }
 </style>
+
+<pre id="textArea" contenteditable="true" class="auto-style1" 
+    style="border-style: dotted; font-size: small; font-family: Arial">
+count = 0;
+//if(!(timerId===undefined))clearInterval(timerId);
+timerId = setInterval(function() {
+    allPixels = [];
+    offset = 0;
+    for(i=0;i<150;i++)allPixels[i]=rgb2pixel(i+count,i+count,count+i+i);
+    sendPixels(offset, allPixels);
+    count++;
+    } , 100);
+
+</pre>
+
 <div class="CanvasContainer">
     <canvas id="drawingCanvas" width="500" height="300"></canvas>
 </div>
+
+
+
 
 <script language="javascript" type="text/javascript">
 
@@ -101,10 +119,24 @@
 var canvas;
 var context;
 var canvasData;
+var allPixels = [];
 //var canvasWidth;// = canvas.width;
 //var canvasHeight;// = canvas.height;
 
 
+function sendPixels(offset, pixels){
+    websocket.send(JSON.stringify({"o":offset,"p":pixels}));
+}
+
+function rgb2pixel(r,g,b){
+	  return b%256 + (g%256 + (r%256) * 256)*256;
+}
+
+function runCode(){
+try{
+eval(document.getElementById("textArea").textContent);
+}catch(e){alert(e);}
+}
 
 
 function draw(event) {
@@ -131,10 +163,6 @@ window.onload = function() {
       canvas = document.getElementById("drawingCanvas");
       context = canvas.getContext("2d");
       canvasData = context.getImageData(0, 0, canvas.width, canvas.height); 
-      // Подключаем требуемые для рисования события
-     // canvas.onmousedown = startDrawing;
-     // canvas.onmouseup = stopDrawing;
-     // canvas.onmouseout = stopDrawing;
       canvas.onmousemove = draw;
      init();
      
@@ -153,16 +181,9 @@ window.onload = function() {
    }
 
 
-
-
-//var canvas = document.getElementById("myCanvas");
-//var ctx = canvas.getContext("2d");
-
-
 // That's how you define the value of a pixel //
 function drawPixel (x, y, r, g, b, a) {
     var index = (x + y * canvas.width) * 4;
-
     canvasData.data[index + 0] = r;
     canvasData.data[index + 1] = g;
     canvasData.data[index + 2] = b;
@@ -239,7 +260,7 @@ function updateCanvas() {
    }
 
   window.addEventListener("load", init, false);
-  window.setInterval("doSend('v')" , 1000);
+//  window.setInterval("doSend('v')" , 1000);
   
 function Button1_onclick() {
 
@@ -255,6 +276,8 @@ function Button1_onclick() {
 <body>
     <h6 style="height: 2px; width: 262px">
         Led control</h6>
+        <button onclick='runCode()' class="style1">
+            Run code</button>
     <table id="buttons" cellpadding="2" style="width: 259px; height: 169px; background-color: #FFCC99;">
         <tr>
             <td class="style1">
@@ -310,6 +333,7 @@ function Button1_onclick() {
             </td>
         </tr>
     </table>
+
     <input id="vol-control" type="range" min="0" max="100" step="1"  oninput="SetSpeed(this.value)" onchange="SetSpeed(this.value)">Speed</input><br>
     <input id="Light" type="range" min="0" max="1500" step="5"  oninput="SetLight(this.value)" onchange="SetLight(this.value)">Light</input>
     <div id="voltage">

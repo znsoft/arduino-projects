@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+
 #include <Arduino.h>
 #include "pin_mux_register.h"
 #include <ESP8266WiFi.h>
@@ -16,6 +18,7 @@ int RECV_PIN = 2; //an IR detector/demodulatord is connected to GPIO pin 2
 IRrecv irrecv(RECV_PIN);
 
 decode_results results;
+
 
 int lightness = 1000;
 
@@ -60,7 +63,8 @@ enum Ledmode {
   RandomMode,
   SlowMoveMode,
   Strobo,
-  DemoAll
+  DemoAll,
+  Prog
 };
 
 Ledmode currentMode;
@@ -292,7 +296,7 @@ void StripEffects( ) {
   RgbColor color;
   G_idxPixel++;
   incremet++;
-  byte strobo = (incremet & currentSpeed)==0?255:0;
+  byte strobo = (incremet & currentSpeed) == 0 ? 255 : 0;
   if (G_idxPixel >= strip.PixelCount()) {
     G_idxPixel = 0;
     cycleCount++;
@@ -312,7 +316,7 @@ void StripEffects( ) {
       //delay(currentSpeed / 50);
       break;
     case StarsMode:
-    Stars();
+      Stars();
       break;
     case PingPongMode:
       theaterChaseRainbow(50);
@@ -376,12 +380,31 @@ ADC_MODE(ADC_VCC);
 ESP8266WebServer server(80);
 std::unique_ptr<DNSServer>        dnsServer;
 
+
+
+void doProg(uint8_t * payload) {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject&  root = jsonBuffer.parseObject((const char *) &payload[0]);
+  if (!root.success())return;
+
+  JsonArray& pixels = root["p"];
+  currentMode = Prog;
+  long offset = root["o"];
+  //JsonArray& pixels = root["p"];
+  for (long i = 0; i < pixels.size(); i = i + 1) {
+    uint32_t rgb = (uint32_t)pixels[i];
+    RgbColor color = HtmlColor(rgb);
+    strip.SetPixelColor((uint16_t)(i + offset), color ); 
+  }
+  strip.Show();
+
+}
+
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) {
   String vol = String(ESP.getVcc(), DEC);
   String pong = String(results.value, HEX);
   uint32_t rgb = (uint32_t) strtol((const char *) &payload[1], NULL, 16);
   RgbColor color = HtmlColor(rgb);
-
 
   switch (type) {
     case WStype_DISCONNECTED:
@@ -408,16 +431,15 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
           break;
         case '#':
           SetPixel(color);
-          //strip.SetPixelColor(strip.PixelCount()-1, color);
-          //FillAll( color);
+          break;
+
+        case '{':
+
+          doProg(payload);
+
 
           break;
-        case '%': case '&':
-          currentSpeed = rgb;
-          //strip.SetPixelColor(strip.PixelCount()-1, color);
-          //FillAll( color);
 
-          break;
 
         case 'b': case 'B'://bflksonrm
           currentMode = RunMode;
